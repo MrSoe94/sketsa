@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo to Sketch Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+    <div class="max-w-4xl mx-auto p-6">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Sketsa Lukis AI</h1>
+            <p class="text-gray-600">Ubah foto Anda menjadi sketsa garis artistik dalam sekejap</p>
+        </header>
+
+        <div class="bg-white rounded-2xl shadow-xl p-8">
+            <!-- Upload Area -->
+            <div id="upload-container" class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-500 transition-colors">
+                <input type="file" id="file-input" class="hidden" accept="image/*">
+                <div id="upload-prompt">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <p class="mt-4 text-lg text-gray-700 font-medium">Klik untuk pilih foto atau seret ke sini</p>
+                    <p class="text-sm text-gray-500">Mendukung format JPG, PNG, atau WEBP</p>
+                </div>
+            </div>
+
+            <!-- Preview & Controls -->
+            <div id="editor-container" class="hidden space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-2">
+                        <p class="font-semibold text-gray-700">Foto Asli</p>
+                        <div class="rounded-lg overflow-hidden bg-gray-100 border h-64 flex items-center justify-center">
+                            <img id="source-preview" class="max-h-full object-contain">
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <p class="font-semibold text-gray-700">Hasil Sketsa AI</p>
+                        <div id="result-container" class="rounded-lg overflow-hidden bg-white border h-64 flex items-center justify-center relative">
+                            <img id="sketch-result" class="max-h-full object-contain hidden">
+                            <div id="loading-overlay" class="hidden flex flex-col items-center">
+                                <div class="loader mb-2"></div>
+                                <p class="text-sm text-blue-600 font-medium">Memproses sketsa...</p>
+                            </div>
+                            <div id="empty-result" class="text-gray-400 italic text-sm">Klik "Buat Sketsa" untuk memproses</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-blue-50 rounded-xl">
+                    <div class="flex-1 w-full">
+                        <label class="block text-sm font-medium text-blue-800 mb-1">Gaya Sketsa</label>
+                        <select id="sketch-style" class="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="detailed pencil sketch">Sketsa Pensil Detail</option>
+                            <option value="minimalist outline drawing">Garis Outline Minimalis</option>
+                            <option value="charcoal portrait style">Gaya Potret Arang (Charcoal)</option>
+                            <option value="architectural ink drawing">Gambar Tinta Arsitektural</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <button id="generate-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all transform active:scale-95 shadow-md">
+                            Buat Sketsa
+                        </button>
+                        <button id="download-btn" disabled class="disabled:bg-gray-300 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-md">
+                            Unduh
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="text-center">
+                    <button id="reset-btn" class="text-sm text-gray-500 hover:text-red-500 underline">Ganti Gambar</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="error-box" class="hidden mt-6 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow">
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = ""; // Disediakan oleh environment
+        const fileInput = document.getElementById('file-input');
+        const uploadContainer = document.getElementById('upload-container');
+        const editorContainer = document.getElementById('editor-container');
+        const sourcePreview = document.getElementById('source-preview');
+        const sketchResult = document.getElementById('sketch-result');
+        const generateBtn = document.getElementById('generate-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const emptyResult = document.getElementById('empty-result');
+        const errorBox = document.getElementById('error-box');
+        const errorMessage = document.getElementById('error-message');
+        const resetBtn = document.getElementById('reset-btn');
+        const sketchStyle = document.getElementById('sketch-style');
+
+        let originalBase64 = null;
+
+        // Trigger file input
+        uploadContainer.addEventListener('click', () => fileInput.click());
+
+        // Handle File Selection
+        fileInput.addEventListener('change', handleFile);
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                originalBase64 = event.target.result.split(',')[1];
+                sourcePreview.src = event.target.result;
+                uploadContainer.classList.add('hidden');
+                editorContainer.classList.remove('hidden');
+                sketchResult.classList.add('hidden');
+                emptyResult.classList.remove('hidden');
+                downloadBtn.disabled = true;
+                errorBox.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Reset
+        resetBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            uploadContainer.classList.remove('hidden');
+            editorContainer.classList.add('hidden');
+            errorBox.classList.add('hidden');
+        });
+
+        // Generate Sketch using AI
+        generateBtn.addEventListener('click', async () => {
+            if (!originalBase64) return;
+
+            // UI State
+            loadingOverlay.classList.remove('hidden');
+            emptyResult.classList.add('hidden');
+            sketchResult.classList.add('hidden');
+            generateBtn.disabled = true;
+            errorBox.classList.add('hidden');
+
+            const style = sketchStyle.value;
+            const prompt = `Convert this image into a professional ${style}. 
+                           Use clean black lines on a pure white background. 
+                           Focus on the edges and main features, making it look like a hand-drawn artistic sketch for painting. 
+                           No colors, just black and white pencil/ink work.`;
+
+            try {
+                const response = await callAI(prompt, originalBase64);
+                if (response) {
+                    sketchResult.src = `data:image/png;base64,${response}`;
+                    sketchResult.classList.remove('hidden');
+                    downloadBtn.disabled = false;
+                }
+            } catch (err) {
+                showError("Gagal memproses gambar. Silakan coba lagi.");
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                generateBtn.disabled = false;
+            }
+        });
+
+        // AI API Call with Backoff
+        async function callAI(prompt, base64Image, retries = 0) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/png", data: base64Image } }
+                    ]
+                }],
+                generationConfig: {
+                    responseModalities: ["IMAGE"]
+                }
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error('API Error');
+
+                const result = await response.json();
+                const base64Result = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                
+                if (!base64Result) throw new Error('No image returned');
+                return base64Result;
+
+            } catch (err) {
+                if (retries < 5) {
+                    const delay = Math.pow(2, retries) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return callAI(prompt, base64Image, retries + 1);
+                }
+                throw err;
+            }
+        }
+
+        // Download Action
+        downloadBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.href = sketchResult.src;
+            link.download = 'sketsa-lukisan.png';
+            link.click();
+        });
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorBox.classList.remove('hidden');
+        }
+
+        // Drag and Drop support
+        uploadContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadContainer.classList.add('border-blue-500');
+        });
+
+        uploadContainer.addEventListener('dragleave', () => {
+            uploadContainer.classList.remove('border-blue-500');
+        });
+
+        uploadContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadContainer.classList.remove('border-blue-500');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFile({ target: { files: files } });
+            }
+        });
+    </script>
+</body>
+</html>
